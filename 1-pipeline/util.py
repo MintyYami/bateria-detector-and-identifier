@@ -42,10 +42,14 @@ def getAliveData(dir=None):
 
 # image read function
 def printImg(imgs, map=None):
+    print(f"Image: {imgs[3]}")
     fig = plt.figure(figsize=(8,15))
-    fig.suptitle("Image ")
     for i in range(2):
         plt.subplot(1, 3, i+1)
+        if i == 0:
+            plt.title('640')
+        else:
+            plt.title('488')
         plt.imshow(imgs[i], cmap=map)
         plt.axis('off')
 
@@ -54,5 +58,9 @@ def printMask(masks, map=None):
     fig = plt.figure(figsize=(8,15))
     for i in range(2):
         plt.subplot(1, 3, i+1)
+        if i == 0:
+            plt.title('640')
+        else:
+            plt.title('488')
         plt.imshow(masks[i][0], cmap=map)
         plt.axis('off')
