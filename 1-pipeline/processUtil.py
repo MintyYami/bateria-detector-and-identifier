@@ -16,10 +16,10 @@ def process_all(function, imgs):
 # segmentation on bright areas (bateria)
 def __segment_bright_bacteria(
     image: np.ndarray,
-    min_area: int = 3,
+    min_area: int = 0,
     max_area: int = 200,
     sigma_bg: float = 10,
-    threshold_scale: float = 0.8
+    threshold_scale: float = 0.1
 ) -> tuple[np.ndarray, np.ndarray]:
 
     image = image.astype(np.float32)
@@ -81,14 +81,17 @@ def getStats(maskCorrects, imgs):
         measurements = []
 
         regions = regionprops(maskCorrects[i][0], intensity_image=imgs[i])
-
         for region in regions:
             label_id = region.label
             area = region.area
             y, x = region.centroid
-
+            # y_min, x_min, y_max, x_max = region.bbox
             major_length = region.axis_major_length
             minor_length = region.axis_minor_length
+            eccentricity = region.eccentricity
+            solidity = region.solidity
+            mean_intensity = region.intensity_mean
+            max_intensity = region.intensity_max
 
             measurements.append({
                 "label": label_id,
@@ -97,9 +100,124 @@ def getStats(maskCorrects, imgs):
                 "y": y,
                 "major_length": major_length,
                 "minor_length": minor_length,
+                "eccentricity": eccentricity,
+                "solidity": solidity,
+                "mean_intensity": mean_intensity,
+                "max_intensity": max_intensity,
             })
         ret.append(pd.DataFrame(measurements))
     return ret
+
+def region_compare(df_a, df_b, tolerance=3, channel_a_name="640", channel_b_name="488",):
+    # region data to compare: a = x640, b = x488
+    df_a = df_a.copy().reset_index(drop=True)
+    df_b = df_b.copy().reset_index(drop=True)
+    pts_a = df_a[["x", "y"]].to_numpy()
+    pts_b = df_b[["x", "y"]].to_numpy()
+
+    # get b neighbours within tolerance distance for each a
+    tree_b = cKDTree(pts_b)
+    nearby = tree_b.query_ball_point(pts_a, r=tolerance)
+    # get a-b pair distance
+    pairs = []
+    for i_a, b_candidates in enumerate(nearby):
+        for i_b in b_candidates:
+            d = np.linalg.norm(pts_a[i_a] - pts_b[i_b])
+            pairs.append((d, i_a, i_b))
+    # sort by distance
+    pairs = sorted(pairs, key=lambda x: x[0])
+
+    used_a = set()
+    used_b = set()
+    matches = []
+    # get pairs of similar regions
+    for d, i_a, i_b in pairs:
+        # skipped already paired regions
+        if i_a in used_a or i_b in used_b:
+            continue
+
+        row_a = df_a.iloc[i_a]
+        row_b = df_b.iloc[i_b]
+
+        area_a = row_a["area"]
+        area_b = row_b["area"]
+        area_average = (area_a+area_b)/2
+
+        matches.append({
+            f"{channel_a_name}_index": i_a,
+            f"{channel_b_name}_index": i_b,
+            f"{channel_a_name}_label": row_a["label"],
+            f"{channel_b_name}_label": row_b["label"],
+
+            "x": (row_a["x"] + row_b["x"]) / 2,
+            "y": (row_a["y"] + row_b["y"]) / 2,
+
+            f"x_{channel_a_name}": row_a["x"],
+            f"y_{channel_a_name}": row_a["y"],
+            f"x_{channel_b_name}": row_b["x"],
+            f"y_{channel_b_name}": row_b["y"],
+
+            "distance": d,
+
+            f"area_{channel_a_name}": area_a,
+            f"area_{channel_b_name}": area_b,
+            f"area_average": area_average,
+
+            f"in_{channel_a_name}": True,
+            f"in_{channel_b_name}": True,
+            "category": "shared",
+        })
+        used_a.add(i_a)
+        used_b.add(i_b)
+
+    shared = pd.DataFrame(matches)
+
+    # get unmatched regions
+    a_only = df_a.loc[
+        [i for i in range(len(df_a)) if i not in used_a]
+    ].copy()
+    b_only = df_b.loc[
+        [i for i in range(len(df_b)) if i not in used_b]
+    ].copy()
+
+    a_only[f"in_{channel_a_name}"] = True
+    a_only[f"in_{channel_b_name}"] = False
+    a_only["category"] = f"{channel_a_name}_only"
+
+    b_only[f"in_{channel_a_name}"] = False
+    b_only[f"in_{channel_b_name}"] = True
+    b_only["category"] = f"{channel_b_name}_only"
+
+    # add required columns
+    df_a_labeled = df_a.copy()
+    df_b_labeled = df_b.copy()
+
+    for df_labeled in [df_a_labeled, df_b_labeled]:
+        df_labeled["match_category"] = "unmatched"
+        df_labeled["matched_label"] = np.nan
+        df_labeled["match_distance"] = np.nan
+        df_labeled["area_average"] = np.nan
+
+    if len(shared) > 0:
+        for _, row in shared.iterrows():
+            a_idx = int(row[f"{channel_a_name}_index"])
+            b_idx = int(row[f"{channel_b_name}_index"])
+
+            df_a_labeled.loc[a_idx, "match_category"] = "shared"
+            df_a_labeled.loc[a_idx, "matched_label"] = row[f"{channel_b_name}_label"]
+            df_a_labeled.loc[a_idx, "match_distance"] = row["distance"]
+            df_a_labeled.loc[a_idx, "area_ratio"] = row["area_ratio"]
+            df_a_labeled.loc[a_idx, "area_warning"] = row["area_warning"]
+
+            df_b_labeled.loc[b_idx, "match_category"] = "shared"
+            df_b_labeled.loc[b_idx, "matched_label"] = row[f"{channel_a_name}_label"]
+            df_b_labeled.loc[b_idx, "match_distance"] = row["distance"]
+            df_b_labeled.loc[b_idx, "area_ratio"] = row["area_ratio"]
+            df_b_labeled.loc[b_idx, "area_warning"] = row["area_warning"]
+
+    df_a_labeled.loc[list(a_only.index), "match_category"] = f"{channel_a_name}_only"
+    df_b_labeled.loc[list(b_only.index), "match_category"] = f"{channel_b_name}_only"
+
 
 def match_two_channels_greedy(
     df_a,
@@ -324,41 +442,3 @@ def match_two_channels_greedy(
     combined = pd.DataFrame(combined_rows)
 
     return shared, a_only, b_only, df_a_labeled, df_b_labeled, combined
-
-def show_label(image, compared):
-    shared,A_only,B_only = compared["shared"], compared["only_640"], compared["only_488"]
-    plt.figure(figsize=(8, 8))
-    plt.imshow(image, cmap="gray")
-    plt.scatter(
-        shared["x"],
-        shared["y"],
-        s=30,
-        facecolors="none",
-        edgecolors="lime",
-        linewidths=1.5,
-        label="shared"
-    )
-
-    plt.scatter(
-        A_only["x"],
-        A_only["y"],
-        s=20,
-        facecolors="none",
-        edgecolors="red",
-        linewidths=1,
-        label="640 only"
-    )
-
-    plt.scatter(
-        B_only["x"],
-        B_only["y"],
-        s=20,
-        facecolors="none",
-        edgecolors="cyan",
-        linewidths=1,
-        label="488 only"
-    )
-
-    plt.legend()
-    plt.axis("off")
-    plt.show()
