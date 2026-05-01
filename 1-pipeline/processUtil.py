@@ -3,7 +3,6 @@ from skimage import filters, morphology, measure, exposure
 from skimage.measure import regionprops
 import pandas as pd
 from scipy.spatial import cKDTree
-import matplotlib.pyplot as plt
 
 # processing all 3 channels of img
 def process_all(function, imgs):
@@ -75,6 +74,8 @@ def getSegments(imgs):
         ret.append([masks, corrected])
     return ret
 
+def length_ratio(row):
+    return row["major_length"] / (row["minor_length"] + 1e-8)
 def getStats(maskCorrects, imgs):
     ret = []
     for i in range(2):
@@ -107,117 +108,6 @@ def getStats(maskCorrects, imgs):
             })
         ret.append(pd.DataFrame(measurements))
     return ret
-
-# def region_compare(df_a, df_b, tolerance=3, channel_a_name="640", channel_b_name="488",):
-#     # region data to compare: a = x640, b = x488
-#     df_a = df_a.copy().reset_index(drop=True)
-#     df_b = df_b.copy().reset_index(drop=True)
-#     pts_a = df_a[["x", "y"]].to_numpy()
-#     pts_b = df_b[["x", "y"]].to_numpy()
-#
-#     # get b neighbours within tolerance distance for each a
-#     tree_b = cKDTree(pts_b)
-#     nearby = tree_b.query_ball_point(pts_a, r=tolerance)
-#     # get a-b pair distance
-#     pairs = []
-#     for i_a, b_candidates in enumerate(nearby):
-#         for i_b in b_candidates:
-#             d = np.linalg.norm(pts_a[i_a] - pts_b[i_b])
-#             pairs.append((d, i_a, i_b))
-#     # sort by distance
-#     pairs = sorted(pairs, key=lambda x: x[0])
-#
-#     used_a = set()
-#     used_b = set()
-#     matches = []
-#     # get pairs of similar regions
-#     for d, i_a, i_b in pairs:
-#         # skipped already paired regions
-#         if i_a in used_a or i_b in used_b:
-#             continue
-#
-#         row_a = df_a.iloc[i_a]
-#         row_b = df_b.iloc[i_b]
-#
-#         area_a = row_a["area"]
-#         area_b = row_b["area"]
-#         area_average = (area_a+area_b)/2
-#
-#         matches.append({
-#             f"{channel_a_name}_index": i_a,
-#             f"{channel_b_name}_index": i_b,
-#             f"{channel_a_name}_label": row_a["label"],
-#             f"{channel_b_name}_label": row_b["label"],
-#
-#             "x": (row_a["x"] + row_b["x"]) / 2,
-#             "y": (row_a["y"] + row_b["y"]) / 2,
-#
-#             f"x_{channel_a_name}": row_a["x"],
-#             f"y_{channel_a_name}": row_a["y"],
-#             f"x_{channel_b_name}": row_b["x"],
-#             f"y_{channel_b_name}": row_b["y"],
-#
-#             "distance": d,
-#
-#             f"area_{channel_a_name}": area_a,
-#             f"area_{channel_b_name}": area_b,
-#             f"area_average": area_average,
-#
-#             f"in_{channel_a_name}": True,
-#             f"in_{channel_b_name}": True,
-#             "category": "shared",
-#         })
-#         used_a.add(i_a)
-#         used_b.add(i_b)
-#
-#     shared = pd.DataFrame(matches)
-#
-#     # get unmatched regions
-#     a_only = df_a.loc[
-#         [i for i in range(len(df_a)) if i not in used_a]
-#     ].copy()
-#     b_only = df_b.loc[
-#         [i for i in range(len(df_b)) if i not in used_b]
-#     ].copy()
-#
-#     a_only[f"in_{channel_a_name}"] = True
-#     a_only[f"in_{channel_b_name}"] = False
-#     a_only["category"] = f"{channel_a_name}_only"
-#
-#     b_only[f"in_{channel_a_name}"] = False
-#     b_only[f"in_{channel_b_name}"] = True
-#     b_only["category"] = f"{channel_b_name}_only"
-#
-#     # add required columns
-#     df_a_labeled = df_a.copy()
-#     df_b_labeled = df_b.copy()
-#
-#     for df_labeled in [df_a_labeled, df_b_labeled]:
-#         df_labeled["match_category"] = "unmatched"
-#         df_labeled["matched_label"] = np.nan
-#         df_labeled["match_distance"] = np.nan
-#         df_labeled["area_average"] = np.nan
-#
-#     if len(shared) > 0:
-#         for _, row in shared.iterrows():
-#             a_idx = int(row[f"{channel_a_name}_index"])
-#             b_idx = int(row[f"{channel_b_name}_index"])
-#
-#             df_a_labeled.loc[a_idx, "match_category"] = "shared"
-#             df_a_labeled.loc[a_idx, "matched_label"] = row[f"{channel_b_name}_label"]
-#             df_a_labeled.loc[a_idx, "match_distance"] = row["distance"]
-#             df_a_labeled.loc[a_idx, "area_ratio"] = row["area_ratio"]
-#             df_a_labeled.loc[a_idx, "area_warning"] = row["area_warning"]
-#
-#             df_b_labeled.loc[b_idx, "match_category"] = "shared"
-#             df_b_labeled.loc[b_idx, "matched_label"] = row[f"{channel_a_name}_label"]
-#             df_b_labeled.loc[b_idx, "match_distance"] = row["distance"]
-#             df_b_labeled.loc[b_idx, "area_ratio"] = row["area_ratio"]
-#             df_b_labeled.loc[b_idx, "area_warning"] = row["area_warning"]
-#
-#     df_a_labeled.loc[list(a_only.index), "match_category"] = f"{channel_a_name}_only"
-#     df_b_labeled.loc[list(b_only.index), "match_category"] = f"{channel_b_name}_only"
-
 
 def match_two_channels_greedy(
     df_a,
@@ -315,6 +205,23 @@ def match_two_channels_greedy(
             f"in_{channel_a_name}": True,
             f"in_{channel_b_name}": True,
             "category": class_shared,
+
+            f"major_length_{channel_a_name}": row_a["major_length"],
+            f"major_length_{channel_b_name}": row_b["major_length"],
+            f"minor_length_{channel_a_name}": row_a["minor_length"],
+            f"minor_length_{channel_b_name}": row_b["minor_length"],
+
+            f"length_ratio_{channel_a_name}": length_ratio(row_a),
+            f"length_ratio_{channel_b_name}": length_ratio(row_b),
+
+            f"eccentricity_{channel_a_name}": row_a["eccentricity"],
+            f"eccentricity_{channel_b_name}": row_b["eccentricity"],
+            f"solidity_{channel_a_name}": row_a["solidity"],
+            f"solidity_{channel_b_name}": row_b["solidity"],
+            f"mean_intensity_{channel_a_name}": row_a["mean_intensity"],
+            f"mean_intensity_{channel_b_name}": row_b["mean_intensity"],
+            f"max_intensity_{channel_a_name}": row_a["max_intensity"],
+            f"max_intensity_{channel_b_name}": row_b["max_intensity"],
         })
 
         used_a.add(i_a)
@@ -373,11 +280,12 @@ def match_two_channels_greedy(
     df_b_labeled.loc[list(b_only.index), "match_category"] = class_b_only
 
     # ------------------------------------------------------------
-    # 2. Build one combined summary table
+    # 2. Build one combined summary table for the raw data
     # ------------------------------------------------------------
 
     combined_rows = []
     if len(shared) > 0:
+        # region showed in both
         for _, row in shared.iterrows():
             combined_rows.append({
                 "object_class": class_shared,
@@ -393,10 +301,25 @@ def match_two_channels_greedy(
                 "distance": row["distance"],
                 "area_ratio": row["area_ratio"],
                 "area_warning": row["area_warning"],
-
                 f"area_{channel_a_name}": row[f"area_{channel_a_name}"],
                 f"area_{channel_b_name}": row[f"area_{channel_b_name}"],
+
+                f"major_length_{channel_a_name}": row[f"major_length_{channel_a_name}"],
+                f"major_length_{channel_b_name}": row[f"major_length_{channel_b_name}"],
+                f"minor_length_{channel_a_name}": row[f"minor_length_{channel_a_name}"],
+                f"minor_length_{channel_b_name}": row[f"minor_length_{channel_b_name}"],
+                f"length_ratio_{channel_a_name}": row[f"length_ratio_{channel_a_name}"],
+                f"length_ratio_{channel_b_name}": row[f"length_ratio_{channel_b_name}"],
+                f"eccentricity_{channel_a_name}": row[f"eccentricity_{channel_a_name}"],
+                f"eccentricity_{channel_b_name}": row[f"eccentricity_{channel_b_name}"],
+                f"solidity_{channel_a_name}": row[f"solidity_{channel_a_name}"],
+                f"solidity_{channel_b_name}": row[f"solidity_{channel_b_name}"],
+                f"mean_intensity_{channel_a_name}": row[f"mean_intensity_{channel_a_name}"],
+                f"mean_intensity_{channel_b_name}": row[f"mean_intensity_{channel_b_name}"],
+                f"max_intensity_{channel_a_name}": row[f"max_intensity_{channel_a_name}"],
+                f"max_intensity_{channel_b_name}": row[f"max_intensity_{channel_b_name}"],
             })
+    # region showed in 640
     for _, row in a_only.iterrows():
         combined_rows.append({
             "object_class": class_a_only,
@@ -412,10 +335,25 @@ def match_two_channels_greedy(
             "distance": np.nan,
             "area_ratio": np.nan,
             "area_warning": False,
-
             f"area_{channel_a_name}": row["area"],
             f"area_{channel_b_name}": np.nan,
+
+            f"major_length_{channel_a_name}": row["major_length"],
+            f"major_length_{channel_b_name}": np.nan,
+            f"minor_length_{channel_a_name}": row["minor_length"],
+            f"minor_length_{channel_b_name}": np.nan,
+            f"length_ratio_{channel_a_name}": length_ratio(row),
+            f"length_ratio_{channel_b_name}": np.nan,
+            f"eccentricity_{channel_a_name}": row["eccentricity"],
+            f"eccentricity_{channel_b_name}": np.nan,
+            f"solidity_{channel_a_name}": row["solidity"],
+            f"solidity_{channel_b_name}": np.nan,
+            f"mean_intensity_{channel_a_name}": row["mean_intensity"],
+            f"mean_intensity_{channel_b_name}": np.nan,
+            f"max_intensity_{channel_a_name}": row["max_intensity"],
+            f"max_intensity_{channel_b_name}": np.nan,
         })
+    # region showed in 488
     for _, row in b_only.iterrows():
         combined_rows.append({
             "object_class": class_b_only,
@@ -431,11 +369,62 @@ def match_two_channels_greedy(
             "distance": np.nan,
             "area_ratio": np.nan,
             "area_warning": False,
-
             f"area_{channel_a_name}": np.nan,
             f"area_{channel_b_name}": row["area"],
+
+            f"major_length_{channel_a_name}": np.nan,
+            f"major_length_{channel_b_name}": row["major_length"],
+            f"minor_length_{channel_a_name}": np.nan,
+            f"minor_length_{channel_b_name}": row["minor_length"],
+            f"length_ratio_{channel_a_name}": np.nan,
+            f"length_ratio_{channel_b_name}": length_ratio(row),
+            f"eccentricity_{channel_a_name}": np.nan,
+            f"eccentricity_{channel_b_name}": row["eccentricity"],
+            f"solidity_{channel_a_name}": np.nan,
+            f"solidity_{channel_b_name}": row["solidity"],
+            f"mean_intensity_{channel_a_name}": np.nan,
+            f"mean_intensity_{channel_b_name}": row["mean_intensity"],
+            f"max_intensity_{channel_a_name}": np.nan,
+            f"max_intensity_{channel_b_name}": row["max_intensity"],
         })
 
     combined = pd.DataFrame(combined_rows)
 
     return shared, a_only, b_only, df_a_labeled, df_b_labeled, combined
+
+# get clean trainable data (no local info)
+def extract_unified_features(combined, channel_a_name="640", channel_b_name="488"):
+    rows = []
+
+    for _, row in combined.iterrows():
+        out = {
+            f"in_{channel_a_name}": row.get(f"in_{channel_a_name}", False),
+            f"in_{channel_b_name}": row.get(f"in_{channel_b_name}", False),
+        }
+
+        # helper: pick value from A if exists, else B
+        def pick(field):
+            a_val = row.get(f"{field}_{channel_a_name}", np.nan)
+            b_val = row.get(f"{field}_{channel_b_name}", np.nan)
+
+            if not pd.isna(a_val):
+                return a_val
+            if not pd.isna(b_val):
+                return b_val
+            return np.nan
+
+        # unified fields
+        for field in [
+            "major_length",
+            "minor_length",
+            "length_ratio",
+            "eccentricity",
+            "solidity",
+            "mean_intensity",
+            "max_intensity",
+        ]:
+            out[field] = pick(field)
+
+        rows.append(out)
+
+    return pd.DataFrame(rows)
