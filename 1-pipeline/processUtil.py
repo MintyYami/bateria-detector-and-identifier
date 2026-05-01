@@ -407,10 +407,12 @@ def extract_unified_features(combined, channel_a_name="640", channel_b_name="488
             a_val = row.get(f"{field}_{channel_a_name}", np.nan)
             b_val = row.get(f"{field}_{channel_b_name}", np.nan)
 
-            if not pd.isna(a_val):
-                return a_val
+            if not pd.isna(b_val) and not pd.isna(a_val):
+                return np.average([a_val, b_val])
             if not pd.isna(b_val):
                 return b_val
+            if not pd.isna(a_val):
+                return a_val
             return np.nan
 
         # unified fields
