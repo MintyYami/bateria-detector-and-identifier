@@ -2,8 +2,6 @@
 
 ## 📍 BioImage Hackathon — University of Warwick
 
----
-
 ## 🚀 Overview
 
 This project was developed during the **BioImage Hackathon at the University of Warwick**, with the goal of transforming **small-scale fluorescent microscopy datasets** into **large, structured, machine-learning-ready data**.
@@ -23,7 +21,6 @@ We built an automated pipeline that:
 📊 **Result:**  
 From **134 images → 14,337 rows** of trainable data
 
----
 
 ## 🧠 Key Idea
 
@@ -32,7 +29,6 @@ Instead of training ML models directly on images, we:
 2. Represent each bacterium as a data point  
 3. Scale dataset size through feature-level expansion  
 
----
 
 ## 🔬 Pipeline
 
@@ -61,7 +57,6 @@ Using region properties from `skimage.measure.regionprops`:
 - `mean_intensity`
 - `max_intensity`
 
----
 
 ### 4. Multi-Channel Matching
 
@@ -73,7 +68,6 @@ This enables:
 - Detection of shared vs channel-specific bacteria
 - Cross-channel feature comparison
 
----
 
 ### 5. Data Structuring
 
@@ -83,7 +77,6 @@ in_640 | in_488 | major_length | minor_length | length_ratio | eccentricity | so
 
 Each row = **one bacterium**
 
----
 
 ## 📦 Output
 
@@ -99,7 +92,6 @@ Final dataset:
 | True| True| 9.712993718118552| 3.801798442728979| 2.5548418304885265|0.9202148363264211|0.9333333333333333|2037.25,2566.0|
 | True| False| 26.04119537045755|9.761132986938414|2.6678455645082786|0.9270918265019187|0.8949771689497716|2783.8469387755104,4540.0|
 
----
 
 ## 🧪 Technologies Used
 
@@ -109,7 +101,6 @@ Final dataset:
 - scikit-image  
 - SciPy (KDTree)  
 
----
 
 ## 📈 Impact
 
@@ -121,9 +112,7 @@ Final dataset:
 ### 🔥 Why it matters
 - Enables ML with **limited imaging data**  
 - Reduces dependency on expert labelling  
-- Speeds up pathogen identification workflows  
-
----
+- Speeds up pathogen identification workflows
 
 ## 🔮 Future Development
 
@@ -140,14 +129,12 @@ Final dataset:
 - Smarter matching beyond centroid distance  
 - Handle overlapping or clustered bacteria  
 
----
 
 ## 🧑‍🔬 Authors
 
-Aishwarya Bhatta
-Jiqiu Hu
-Jialu Li
-Mint Cheepchiewcharnchai
+- Aishwarya Bhatta
+- Jiqiu Hu
+- Jialu Li
+- Mint Cheepchiewcharnchai
 
-Developed during the **BioImage Hackathon**
-University of Warwick  
+Developed during the **BioImage Hackathon** hosted by the University of Warwick
